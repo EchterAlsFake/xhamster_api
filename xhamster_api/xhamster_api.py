@@ -1,7 +1,13 @@
-from base_api import BaseCore
+import os
 
+from base_api import BaseCore
 from functools import cached_property
-from modules.consts import *
+
+try:
+    from modules.consts import *
+
+except (ModuleNotFoundError, ImportError):
+    from .modules.consts import *
 
 core = BaseCore()
 
@@ -41,8 +47,12 @@ class Video:
     def get_segments(self, quality):
         core.get_segments(self.m3u8_base_url, quality)
 
-    def download(self, quality):
-        core.download(video=self, quality=quality, downloader="threaded", path="./fortnite.mp4")
+    def download(self, quality, downloader, path="./", no_title = False):
+        if no_title is False:
+            path = os.path.join(path, self.title + ".mp4")
+
+
+        core.download(video=self, quality=quality, downloader=downloader, path=path)
 
 class Client:
     def get_video(self, url):
