@@ -45,7 +45,7 @@ class Video:
         return fixed_url
 
     def get_segments(self, quality):
-        core.get_segments(self.m3u8_base_url, quality)
+        return core.get_segments(self.m3u8_base_url, quality)
 
     def download(self, quality, downloader, path="./", no_title = False, callback=None):
         if no_title is False:
