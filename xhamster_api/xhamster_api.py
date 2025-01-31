@@ -47,12 +47,12 @@ class Video:
     def get_segments(self, quality):
         core.get_segments(self.m3u8_base_url, quality)
 
-    def download(self, quality, downloader, path="./", no_title = False):
+    def download(self, quality, downloader, path="./", no_title = False, callback=None):
         if no_title is False:
             path = os.path.join(path, self.title + ".mp4")
 
 
-        core.download(video=self, quality=quality, downloader=downloader, path=path)
+        core.download(video=self, quality=quality, downloader=downloader, path=path, callback=callback)
 
 class Client:
     def get_video(self, url):
