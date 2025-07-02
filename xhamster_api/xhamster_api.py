@@ -10,20 +10,13 @@ try:
 except (ModuleNotFoundError, ImportError):
     from .modules.consts import *
 
-core = BaseCore()
-
-def refresh_core(enable_logging=False, log_file: str = None, level=None):
-    global core
-    core = BaseCore()
-    if enable_logging:
-        core.enable_logging(log_file=log_file, level=level)
-
 
 class Video:
-    def __init__(self, url):
+    def __init__(self, url, core):
+        self.core = core
         self.url = url
         self.logger = setup_logger(name="XHamster API - [Video]")
-        self.content = core.fetch(self.url)
+        self.content = self.core.fetch(self.url)
 
     def enable_logging(self, log_file: str = None, level=None):
         self.logger = setup_logger(name="XHamster API - [Video]", level=level, log_file=log_file)
@@ -53,15 +46,18 @@ class Video:
         return fixed_url
 
     def get_segments(self, quality):
-        return core.get_segments(self.m3u8_base_url, quality)
+        return self.core.get_segments(self.m3u8_base_url, quality)
 
     def download(self, quality, downloader, path="./", no_title = False, callback=None):
         if no_title is False:
             path = os.path.join(path, self.title + ".mp4")
 
 
-        core.download(video=self, quality=quality, downloader=downloader, path=path, callback=callback)
+        self.core.download(video=self, quality=quality, downloader=downloader, path=path, callback=callback)
 
 class Client:
+    def __init__(self, core=None):
+        self.core = core or BaseCore()
+
     def get_video(self, url):
-        return Video(url)
+        return Video(url, core=self.core)
