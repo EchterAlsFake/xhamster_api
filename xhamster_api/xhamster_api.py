@@ -1,5 +1,7 @@
 import os
+import traceback
 
+from typing import Optional
 from base_api import BaseCore
 from functools import cached_property
 from base_api.base import setup_logger
@@ -12,7 +14,7 @@ except (ModuleNotFoundError, ImportError):
 
 
 class Video:
-    def __init__(self, url, core):
+    def __init__(self, url, core: Optional[BaseCore] = None):
         self.core = core
         self.url = url
         self.logger = setup_logger(name="XHamster API - [Video]")
@@ -48,15 +50,24 @@ class Video:
     def get_segments(self, quality):
         return self.core.get_segments(self.m3u8_base_url, quality)
 
-    def download(self, quality, downloader, path="./", no_title = False, callback=None):
+    def download(self, quality, downloader, path="./", no_title = False, callback=None, remux: bool = False,
+                 remux_callback = None) -> bool:
         if no_title is False:
             path = os.path.join(path, self.title + ".mp4")
 
+        try:
+            self.core.download(video=self, quality=quality, downloader=downloader, path=path, callback=callback,
+                           remux=remux, callback_remux=remux_callback)
+            return True
 
-        self.core.download(video=self, quality=quality, downloader=downloader, path=path, callback=callback)
+        except Exception:
+            error = traceback.format_exc()
+            self.logger.error(error)
+            return False
+
 
 class Client:
-    def __init__(self, core=None):
+    def __init__(self, core: Optional[BaseCore] = None):
         self.core = core or BaseCore()
 
     def get_video(self, url):
