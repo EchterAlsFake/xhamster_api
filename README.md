@@ -1,3 +1,5 @@
+tests are working, github just hates me
+
 This is a very rushed release to support downloading for my Porn Fetch project. I will extend this API over the next months.
 If you have specific feature requests, please report them in the Issues section.
 
