@@ -5,3 +5,7 @@ REGEX_TITLE = re.compile(r'<meta property="og:title" content="(.*?)"')
 REGEX_AUTHOR = re.compile(r'<div class="item-[^"]*?">.*?<img[^>]+?alt="([^"]+?)"[^>]*?>.*?<span class="body-[^"]*? label-[^"]*? label-[^"]*?">([^<]+?)</span>')
 REGEX_THUMBNAIL = re.compile(r'<meta property="og:image" content="(.*?)">')
 REGEX_LENGTH = re.compile(r'<span class="eta">(.*?)</span>')
+
+headers = {
+    "Referer": "https://xhamster.com/"
+}

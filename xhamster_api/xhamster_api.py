@@ -5,6 +5,7 @@ from typing import Optional
 from base_api import BaseCore
 from functools import cached_property
 from base_api.base import setup_logger
+from base_api.modules.config import RuntimeConfig
 
 try:
     from modules.consts import *
@@ -68,7 +69,11 @@ class Video:
 
 class Client:
     def __init__(self, core: Optional[BaseCore] = None):
-        self.core = core or BaseCore()
+        self.core = core or BaseCore(config=RuntimeConfig())
+        if self.core.session is None:
+            self.core.initialize_session()
+
+        self.core.session.headers = headers
 
     def get_video(self, url):
         return Video(url, core=self.core)
