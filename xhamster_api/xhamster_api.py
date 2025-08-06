@@ -21,8 +21,8 @@ class Video:
         self.logger = setup_logger(name="XHamster API - [Video]")
         self.content = self.core.fetch(self.url)
 
-    def enable_logging(self, log_file: str = None, level=None):
-        self.logger = setup_logger(name="XHamster API - [Video]", level=level, log_file=log_file)
+    def enable_logging(self, log_file: str = None, level=None, log_ip: str = None, log_port: int = None):
+        self.logger = setup_logger(name="XHamster API - [Video]", level=level, log_file=log_file, http_ip=log_ip, http_port=log_port)
 
     @cached_property
     def title(self):
@@ -70,10 +70,7 @@ class Video:
 class Client:
     def __init__(self, core: Optional[BaseCore] = None):
         self.core = core or BaseCore(config=RuntimeConfig())
-        if self.core.session is None:
-            self.core.initialize_session()
-
-        self.core.session.headers = headers
+        self.core.initialize_session(headers)
 
     def get_video(self, url):
         return Video(url, core=self.core)
