@@ -1,8 +1,10 @@
 import os
+import re
 import traceback
 
 from typing import Optional
 from base_api import BaseCore
+from bs4 import BeautifulSoup
 from functools import cached_property
 from base_api.base import setup_logger
 from base_api.modules.config import RuntimeConfig
@@ -12,6 +14,46 @@ try:
 
 except (ModuleNotFoundError, ImportError):
     from .modules.consts import *
+
+class Channel:
+    def __init__(self, url: str, core: Optional[BaseCore] = None):
+        self.url = url
+        self.core = core
+        self.html_content = self.core.fetch(url)
+        self.soup = BeautifulSoup(self.html_content, "html.parser")
+
+    @cached_property
+    def name(self) -> str:
+        return self.soup.find("h1", class_="h3-bold-8643e primary-8643e landing-info__user-title").text.strip()
+
+    @cached_property
+    def subscribers_count(self) -> str:
+        return self.soup.find("div", class_="body-8643e primary-8643e landing-info__metric-value").text.strip()
+
+    @cached_property
+    def videos_count(self) -> str:
+        return self.soup.find_all("div", class_="body-8643e primary-8643e landing-info__metric-value")[1].text.strip()
+
+    @cached_property
+    def total_views_count(self) -> str:
+        return self.soup.find_all("div", class_="body-8643e primary-8643e landing-info__metric-value")[2].text.strip()
+
+
+class Pornstar:
+    def __init__(self, url: str, core: Optional[BaseCore] = None):
+        self.url = url
+        self.core = core
+        self.html_content = self.core.fetch(self.url)
+        self.soup = BeautifulSoup(self.html_content, "html.parser")
+
+
+
+
+
+
+
+
+
 
 
 class Video:
@@ -72,5 +114,9 @@ class Client:
         self.core = core or BaseCore(config=RuntimeConfig())
         self.core.initialize_session(headers)
 
-    def get_video(self, url):
+    def get_video(self, url: str) -> Video:
         return Video(url, core=self.core)
+
+    def get_channel(self, url: str) -> Channel:
+        return Channel(url, core=self.core)
+
