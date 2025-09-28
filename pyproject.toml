@@ -15,6 +15,7 @@ authors = [
 dependencies = [
     "eaf_base_api",
     "httpx",
+    "bs4"
 ]
 optional-dependencies = {av = ["av"], ffmpeg = ["ffmpeg-progress-yield"]}
 classifiers = [
