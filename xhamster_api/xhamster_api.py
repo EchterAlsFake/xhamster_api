@@ -14,6 +14,49 @@ except (ModuleNotFoundError, ImportError):
     from .modules.consts import *
 
 
+class Short:
+    def __init__(self, url: str, core: Optional[BaseCore] = None):
+        self.core = core
+        self.url = url
+        self.logger = setup_logger(name="XHamster API - [Short]")
+        self.content = self.core.fetch(self.url)
+
+    @cached_property
+    def title(self) -> str:
+        return REGEX_TITLE.search(self.content).group(1)
+
+    @cached_property
+    def author(self) -> str:
+        return REGEX_AUTHOR_SHORTS.search(self.content).group(1)
+
+    @cached_property
+    def likes(self) -> int:
+        return int(REGEX_LIKES_SHORTS.search(self.content).group(1))
+
+    @cached_property
+    def m3u8_base_url(self) -> str:
+        return REGEX_M3U8.search(self.content).group(0)
+
+    def get_segments(self) -> list:
+        return self.core.get_segments(self.m3u8_base_url, quality="best") # Why would you download it not in the best quality like seriously...
+
+    def download(self, quality, downloader, path="./", no_title = False, callback=None, remux: bool = False,
+                 remux_callback = None) -> bool:
+        if no_title is False:
+            path = os.path.join(path, self.title + ".mp4")
+
+        try:
+            self.core.download(video=self, quality=quality, downloader=downloader, path=path, callback=callback,
+                           remux=remux, callback_remux=remux_callback)
+            return True
+
+        except Exception:
+            error = traceback.format_exc()
+            print(error)
+            self.logger.error(error)
+            return False
+
+
 class Video:
     def __init__(self, url, core: Optional[BaseCore] = None):
         self.core = core
@@ -63,6 +106,7 @@ class Video:
 
         except Exception:
             error = traceback.format_exc()
+            print(error)
             self.logger.error(error)
             return False
 
@@ -72,5 +116,8 @@ class Client:
         self.core = core or BaseCore(config=RuntimeConfig())
         self.core.initialize_session(headers)
 
-    def get_video(self, url):
+    def get_video(self, url: str) -> Video:
         return Video(url, core=self.core)
+
+    def get_short(self, url: str) -> Short:
+        return Short(url, core=self.core)
