@@ -2,18 +2,67 @@ import os
 import re
 import traceback
 
-from typing import Optional
+from urllib.parse import urlencode, quote
+from typing import Optional, Literal, Generator
 from base_api import BaseCore
 from bs4 import BeautifulSoup
 from functools import cached_property
 from base_api.base import setup_logger
 from base_api.modules.config import RuntimeConfig
+from concurrent.futures import as_completed, ThreadPoolExecutor
 
 try:
     from modules.consts import *
 
 except (ModuleNotFoundError, ImportError):
     from .modules.consts import *
+
+
+class ErrorVideo:
+    """Drop-in-ish stand-in that raises when accessed."""
+    def __init__(self, url: str, err: Exception):
+        self.url = url
+        self._err = err
+
+    def __getattr__(self, _):
+        # Any attribute access surfaces the original error
+        raise self._err
+
+
+class Helper:
+    def __init__(self, core: BaseCore):
+        super(Helper).__init__()
+        self.core = core
+
+    def _get_video(self, url: str):
+        return Video(url, core=self.core)
+
+    def _make_video_safe(self, url: str):
+        try:
+            return Video(url, core=self.core)
+        except Exception as e:
+            return ErrorVideo(url, e)
+
+    def iterator(self, pages: int = 0, max_workers: int = 20):
+        if pages == 0:
+            pages = 99
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for idx in range(0, pages):
+                print(f"Iterating page {idx}/{pages}")
+                url = f"{self.url}&page={idx}"
+                content = self.core.fetch(url)
+                soup = BeautifulSoup(content, "html.parser")
+                _videos = soup.find_all("a", class_="video-thumb__image-container role-pop thumb-image-container")
+                videos = []
+
+                for video_url in _videos:
+                    videos.append(video_url["href"])
+
+                futures = [executor.submit(self._make_video_safe, url) for url in videos]
+                for fut in as_completed(futures):
+                    yield fut.result()
+
 
 class Channel:
     def __init__(self, url: str, core: Optional[BaseCore] = None):
@@ -45,15 +94,6 @@ class Pornstar:
         self.core = core
         self.html_content = self.core.fetch(self.url)
         self.soup = BeautifulSoup(self.html_content, "html.parser")
-
-
-
-
-
-
-
-
-
 
 
 class Short:
@@ -153,8 +193,9 @@ class Video:
             return False
 
 
-class Client:
+class Client(Helper):
     def __init__(self, core: Optional[BaseCore] = None):
+        super().__init__(core)
         self.core = core or BaseCore(config=RuntimeConfig())
         self.core.initialize_session(headers)
 
@@ -164,6 +205,63 @@ class Client:
     def get_channel(self, url: str) -> Channel:
         return Channel(url, core=self.core)
 
-
     def get_short(self, url: str) -> Short:
         return Short(url, core=self.core)
+
+    def search_videos(self, query: str,
+        minimum_quality: Literal["720p", "1080p", "2160p"] = "720p",
+        sort_by: Literal["views", "newest", "best", "longest"] = "", # Empty string sorts by rlevance
+
+        category: Literal["german", "amateur", "18-year-old", "granny", "anal", "old-young", "mature",
+        "mom", "milf", "big-tits", "big-natural-tits", "lesbian", "teen", "cum-in-mouth", "bdsm",
+        "porn-for-women", "russian", "vintage", "hairy", "brutal-sex"] = "",
+        vr: bool = False,
+        full_length_only: bool = False,
+        min_duration: Literal["2", "5", "10", "30", "40"] = "",
+        date: Literal["latest", "weekly", "monthly", "yearly"] = "",
+        production: Literal["studios", "creators"] = "",
+        fps: Literal["30", "60"] = "",
+                      pages: int = 2,
+                      max_workers: int = 20) -> Generator[Video, None, None]:
+        path = quote(str(query), safe="")  # e.g. "4k cats & dogs" -> "4k%20cats%20%26%20dogs"
+        base = f"https://xhamster.com/search/"
+        url = base + path
+
+        params = {}
+
+        if minimum_quality:
+            params["quality"] = minimum_quality
+
+        if sort_by:
+            params["sort"] = sort_by
+
+        if isinstance(category, list) and category:
+            params["cats"] = category
+
+        if vr:
+            params["format"] = "vr"
+
+        if full_length_only:
+            params["length"] = "full"
+
+        if min_duration:
+            params["min-duration"] = min_duration  # note: += (don’t overwrite the URL)
+
+        if date:
+            params["date"] = date
+
+        if production:
+            params["prod"] = production
+
+        if fps:
+            params["fps"] = fps
+
+        query_string = urlencode(params, doseq=True)
+        self.url = f"{url}?{query_string}" if query_string else url
+        yield from self.iterator(pages=pages, max_workers=max_workers)
+
+
+if __name__ == "__main__":
+    client = Client()
+    for idx, video in enumerate(client.search_videos("fortnite")):
+        print(f"{idx} {video.title}")
