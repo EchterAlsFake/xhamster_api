@@ -1,7 +1,7 @@
 import os
-import re
 import traceback
 
+from httpx import Response
 from urllib.parse import urlencode, quote
 from typing import Optional, Literal, Generator
 from base_api import BaseCore
@@ -29,10 +29,16 @@ class ErrorVideo:
         raise self._err
 
 
-class Helper:
+
+class Helper: # ChatGPT cooked not gonna lie
     def __init__(self, core: BaseCore):
-        super(Helper).__init__()
+        super().__init__()
         self.core = core
+        self.url: Optional[str] = None
+
+        # controls how iterator behaves
+        self.is_search: bool = False          # True only for search mode
+        self.pre_html: Optional[str] = None   # first-page HTML (for Something/*)
 
     def _get_video(self, url: str):
         return Video(url, core=self.core)
@@ -43,58 +49,135 @@ class Helper:
         except Exception as e:
             return ErrorVideo(url, e)
 
+    def _page_url(self, idx: int) -> Optional[str]:
+        """
+        Compute the URL to fetch for a given page index.
+
+        SEARCH MODE:
+            - always fetch ?page={idx}
+        SOMETHING MODE (Channel/Pornstar/Creator):
+            - idx == 0: use pre-fetched HTML (return None so caller won't fetch)
+            - idx == 1: skip (duplicate of first page) -> return "" to signal skip
+            - idx >= 2: fetch f"{base}/{idx}"
+        """
+        if self.url is None:
+            return ""
+
+        if self.is_search:
+            # query-string pagination
+            joiner = "&" if "?" in self.url else "?"
+            return f"{self.url}{joiner}page={idx}"
+
+        # non-search: special first page handling
+        if idx == 0:
+            return None  # signal: use self.pre_html once
+
+        if idx == 1:
+            return ""    # signal: skip (same as first page on this site)
+
+        return f"{self.url}/{idx}"
+
+    def _extract_video_links(self, html: str) -> list[str]:
+        soup = BeautifulSoup(html, "html.parser")
+        nodes = soup.find_all(
+            "a",
+            class_="video-thumb__image-container role-pop thumb-image-container"
+        )
+        return [n.get("href") for n in nodes if n and n.get("href")]
+
     def iterator(self, pages: int = 0, max_workers: int = 20):
+        # 0 means “as many as practical” -> cap to a sane large number
         if pages == 0:
             pages = 99
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for idx in range(0, pages):
-                print(f"Iterating page {idx}/{pages}")
-                url = f"{self.url}&page={idx}"
-                content = self.core.fetch(url)
-                soup = BeautifulSoup(content, "html.parser")
-                _videos = soup.find_all("a", class_="video-thumb__image-container role-pop thumb-image-container")
-                videos = []
+            for idx in range(pages):
+                page_url = self._page_url(idx)
 
-                for video_url in _videos:
-                    videos.append(video_url["href"])
+                if page_url is None:
+                    # use pre-fetched HTML exactly once (idx == 0 in Something/* mode)
+                    content = self.pre_html
+                elif page_url == "":
+                    # explicit skip (idx == 1 in Something/* mode)
+                    continue
+                else:
+                    content = self.core.fetch(page_url)
+                    if isinstance(content, Response):
+                        break  # 404 or no more content...
 
-                futures = [executor.submit(self._make_video_safe, url) for url in videos]
+                if not content:
+                    continue
+
+                # --- Parse and schedule video creation ---
+                video_links = self._extract_video_links(content)
+                if not video_links:
+                    if self.is_search:
+                        continue
+                    else:
+                        break
+
+                futures = [executor.submit(self._make_video_safe, v) for v in video_links]
                 for fut in as_completed(futures):
                     yield fut.result()
 
 
-class Channel:
+class Something(Helper):
     def __init__(self, url: str, core: Optional[BaseCore] = None):
+        if core is None:
+            raise ValueError("core must be provided")
+        super().__init__(core)
         self.url = url
-        self.core = core
+        self.is_search = False  # explicit
+        # pre-fetch: this page already contains the first batch of videos
         self.html_content = self.core.fetch(url)
+        self.pre_html = self.html_content
         self.soup = BeautifulSoup(self.html_content, "html.parser")
 
     @cached_property
     def name(self) -> str:
-        return self.soup.find("h1", class_="h3-bold-8643e primary-8643e landing-info__user-title").text.strip()
+        return self.soup.find(
+            "h1",
+            class_="h3-bold-8643e primary-8643e landing-info__user-title"
+        ).text.strip()
 
     @cached_property
     def subscribers_count(self) -> str:
-        return self.soup.find("div", class_="body-8643e primary-8643e landing-info__metric-value").text.strip()
+        return self.soup.find(
+            "div",
+            class_="body-8643e primary-8643e landing-info__metric-value"
+        ).text.strip()
 
     @cached_property
     def videos_count(self) -> str:
-        return self.soup.find_all("div", class_="body-8643e primary-8643e landing-info__metric-value")[1].text.strip()
+        return self.soup.find_all(
+            "div",
+            class_="body-8643e primary-8643e landing-info__metric-value"
+        )[1].text.strip()
 
     @cached_property
     def total_views_count(self) -> str:
-        return self.soup.find_all("div", class_="body-8643e primary-8643e landing-info__metric-value")[2].text.strip()
+        return self.soup.find_all(
+            "div",
+            class_="body-8643e primary-8643e landing-info__metric-value"
+        )[2].text.strip()
+
+    def videos(self, pages: int = 2, max_workers: int = 20):
+        # idx==0 -> use pre_html
+        # idx==1 -> skip (same page)
+        # idx>=2 -> fetch f"{url}/{idx}"
+        yield from self.iterator(pages=pages, max_workers=max_workers)
 
 
-class Pornstar:
-    def __init__(self, url: str, core: Optional[BaseCore] = None):
-        self.url = url
-        self.core = core
-        self.html_content = self.core.fetch(self.url)
-        self.soup = BeautifulSoup(self.html_content, "html.parser")
+class Channel(Something):
+    pass
 
+
+class Pornstar(Something):
+    pass
+
+
+class Creator(Something):
+    pass
 
 class Short:
     def __init__(self, url: str, core: Optional[BaseCore] = None):
@@ -202,6 +285,12 @@ class Client(Helper):
     def get_video(self, url: str) -> Video:
         return Video(url, core=self.core)
 
+    def get_pornstar(self, url: str) -> Pornstar:
+        return Pornstar(url, core=self.core)
+
+    def get_creator(self, url: str) -> Creator:
+        return Creator(url, core=self.core)
+
     def get_channel(self, url: str) -> Channel:
         return Channel(url, core=self.core)
 
@@ -257,11 +346,12 @@ class Client(Helper):
             params["fps"] = fps
 
         query_string = urlencode(params, doseq=True)
-        self.url = f"{url}?{query_string}" if query_string else url
-        yield from self.iterator(pages=pages, max_workers=max_workers)
+        final_url = f"{url}?{query_string}" if query_string else url
 
+        # Use Helper in search mode
+        helper = Helper(self.core)  # or however you construct it in your codebase
+        helper.url = final_url
+        helper.is_search = True  # critical: enables ?page= style
+        helper.pre_html = None  # not used for search
 
-if __name__ == "__main__":
-    client = Client()
-    for idx, video in enumerate(client.search_videos("fortnite")):
-        print(f"{idx} {video.title}")
+        yield from helper.iterator(pages=pages, max_workers=max_workers)
