@@ -6,6 +6,8 @@ REGEX_AUTHOR = re.compile(r'<div class="item-[^"]*?">.*?<img[^>]+?alt="([^"]+?)"
 REGEX_AUTHOR_SHORTS = re.compile(r'body-bold-8643e label-5984a label-96c3e">(.*?)</span>')
 REGEX_THUMBNAIL = re.compile(r'<meta property="og:image" content="(.*?)">')
 REGEX_LENGTH = re.compile(r'<span class="eta">(.*?)</span>')
+REGEX_AVATAR = re.compile(r"background-image: url\('(.*?)'\)")
+
 
 REGEX_LIKES_SHORTS = re.compile(r'"likes":(.*?),"')
 

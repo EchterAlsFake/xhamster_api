@@ -49,6 +49,9 @@ class Helper: # ChatGPT cooked not gonna lie
         except Exception as e:
             return ErrorVideo(url, e)
 
+    def _get_short(self, url: str):
+        return Short(url, core=self.core)
+
     def _page_url(self, idx: int) -> Optional[str]:
         """
         Compute the URL to fetch for a given page index.
@@ -77,15 +80,22 @@ class Helper: # ChatGPT cooked not gonna lie
 
         return f"{self.url}/{idx}"
 
-    def _extract_video_links(self, html: str) -> list[str]:
+    def _extract_video_links(self, html: str, shorts) -> list[str]:
         soup = BeautifulSoup(html, "html.parser")
-        nodes = soup.find_all(
+        if not shorts:
+            nodes = soup.find_all(
             "a",
             class_="video-thumb__image-container role-pop thumb-image-container"
         )
+
+        else:
+            nodes = soup.find_all("a",
+                                  class_="imageContainer-a870e role-pop thumb-image-container thumb-image-container--moment")
+
+
         return [n.get("href") for n in nodes if n and n.get("href")]
 
-    def iterator(self, pages: int = 0, max_workers: int = 20):
+    def iterator(self, pages: int = 0, max_workers: int = 20, shorts: bool = False):
         # 0 means “as many as practical” -> cap to a sane large number
         if pages == 0:
             pages = 99
@@ -109,14 +119,19 @@ class Helper: # ChatGPT cooked not gonna lie
                     continue
 
                 # --- Parse and schedule video creation ---
-                video_links = self._extract_video_links(content)
+                video_links = self._extract_video_links(content, shorts)
                 if not video_links:
                     if self.is_search:
                         continue
                     else:
                         break
 
-                futures = [executor.submit(self._make_video_safe, v) for v in video_links]
+                if not shorts:
+                    futures = [executor.submit(self._make_video_safe, v) for v in video_links]
+
+                else:
+                    futures = [executor.submit(self._get_short, url) for url in video_links]
+
                 for fut in as_completed(futures):
                     yield fut.result()
 
@@ -161,12 +176,42 @@ class Something(Helper):
             class_="body-8643e primary-8643e landing-info__metric-value"
         )[2].text.strip()
 
+    @cached_property
+    def avatar_url(self) -> str:
+        return REGEX_AVATAR.search(self.html_content).group(1)
+
     def videos(self, pages: int = 2, max_workers: int = 20):
         # idx==0 -> use pre_html
         # idx==1 -> skip (same page)
         # idx>=2 -> fetch f"{url}/{idx}"
         yield from self.iterator(pages=pages, max_workers=max_workers)
 
+    @cached_property
+    def get_information(self) -> dict:
+        container = self.soup.find("div", class_="personalInfo-5360e")
+        if not container:
+            return None # No User Information present...
+
+        li_tags = container.find_all("li")
+        fortnite = self.soup.find_all("ul", class_="list-b51e4")
+        li_tags.extend(fortnite[1].find_all("li"))
+
+        dictionary = {}
+
+        for li_tag in li_tags:
+            divs = li_tag.find_all("div")
+            key = divs[0].text.strip()
+            value = divs[1].text.strip()
+            dictionary[key] = value
+
+        return dictionary
+
+    def get_shorts(self):
+        if not self.url.endswith("/"):
+            self.url += "/"
+
+        self.url += "shorts"
+        yield from self.iterator(shorts=True)
 
 class Channel(Something):
     pass
