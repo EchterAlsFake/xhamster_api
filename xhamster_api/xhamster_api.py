@@ -2,13 +2,13 @@ import os
 import traceback
 
 from httpx import Response
-from urllib.parse import urlencode, quote
-from typing import Optional, Literal, Generator
 from base_api import BaseCore
 from bs4 import BeautifulSoup
 from functools import cached_property
 from base_api.base import setup_logger
+from urllib.parse import urlencode, quote
 from base_api.modules.config import RuntimeConfig
+from typing import Optional, Literal, Generator, Union
 from concurrent.futures import as_completed, ThreadPoolExecutor
 
 try:
@@ -250,7 +250,7 @@ class Short:
     def get_segments(self) -> list:
         return self.core.get_segments(self.m3u8_base_url, quality="best") # Why would you download it not in the best quality like seriously...
 
-    def download(self, quality, downloader, path="./", no_title = False, callback=None, remux: bool = False,
+    def download(self, quality: Union[int, str], downloader, path="./", no_title = False, callback=None, remux: bool = False,
                  remux_callback = None) -> bool:
         if no_title is False:
             path = os.path.join(path, self.title + ".mp4")
