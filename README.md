@@ -7,12 +7,12 @@
 </div>
 
 # Description
-XHamster API is an API for xvideos.com. It allows you to fetch information from videos using regexes and requests.
+XHamster API is an API for xhamster.com. It allows you to fetch information from videos using regexes and requests.
 
 # Disclaimer
 > [!IMPORTANT] 
-> XVideos API is in violation to the ToS of xvideos.com!
-> If you are the website owner of xvideos.com, contact me at my E-Mail, and I'll take this repository immediately offline.
+> XHamster API is in violation to the ToS of xhamster.com!
+> If you are the website owner of xhamster.com, contact me at my E-Mail, and I'll take this repository immediately offline.
 > EchterAlsFake@proton.me
 
 # Quickstart
