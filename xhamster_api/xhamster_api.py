@@ -1,15 +1,12 @@
 import os
+import logging
 import traceback
 
-from httpx import Response
-from base_api import BaseCore
-from bs4 import BeautifulSoup
 from functools import cached_property
-from base_api.base import setup_logger
 from urllib.parse import urlencode, quote
 from base_api.modules.config import RuntimeConfig
+from base_api.base import BaseCore, setup_logger, Helper
 from typing import Optional, Literal, Generator, Union
-from concurrent.futures import as_completed, ThreadPoolExecutor
 
 try:
     from modules.consts import *
@@ -18,135 +15,12 @@ except (ModuleNotFoundError, ImportError):
     from .modules.consts import *
 
 
-class ErrorVideo:
-    """Drop-in-ish stand-in that raises when accessed."""
-    def __init__(self, url: str, err: Exception):
-        self.url = url
-        self._err = err
-
-    def __getattr__(self, _):
-        # Any attribute access surfaces the original error
-        raise self._err
-
-
-
-class Helper: # ChatGPT cooked not gonna lie
-    def __init__(self, core: BaseCore):
-        super().__init__()
-        self.core = core
-        self.url: Optional[str] = None
-
-        # controls how iterator behaves
-        self.is_search: bool = False          # True only for search mode
-        self.pre_html: Optional[str] = None   # first-page HTML (for Something/*)
-
-    def _get_video(self, url: str):
-        return Video(url, core=self.core)
-
-    def _make_video_safe(self, url: str):
-        try:
-            return Video(url, core=self.core)
-        except Exception as e:
-            return ErrorVideo(url, e)
-
-    def _get_short(self, url: str):
-        return Short(url, core=self.core)
-
-    def _page_url(self, idx: int) -> Optional[str]:
-        """
-        Compute the URL to fetch for a given page index.
-
-        SEARCH MODE:
-            - always fetch ?page={idx}
-        SOMETHING MODE (Channel/Pornstar/Creator):
-            - idx == 0: use pre-fetched HTML (return None so caller won't fetch)
-            - idx == 1: skip (duplicate of first page) -> return "" to signal skip
-            - idx >= 2: fetch f"{base}/{idx}"
-        """
-        if self.url is None:
-            return ""
-
-        if self.is_search:
-            # query-string pagination
-            joiner = "&" if "?" in self.url else "?"
-            return f"{self.url}{joiner}page={idx}"
-
-        # non-search: special first page handling
-        if idx == 0:
-            return None  # signal: use self.pre_html once
-
-        if idx == 1:
-            return ""    # signal: skip (same as first page on this site)
-
-        return f"{self.url}/{idx}"
-
-    def _extract_video_links(self, html: str, shorts) -> list[str]:
-        soup = BeautifulSoup(html, "html.parser")
-        if not shorts:
-            nodes = soup.find_all(
-            "a",
-            class_="video-thumb__image-container role-pop thumb-image-container"
-        )
-
-        else:
-            nodes = soup.find_all("a",
-                                  class_="imageContainer-a870e role-pop thumb-image-container thumb-image-container--moment")
-
-
-        return [n.get("href") for n in nodes if n and n.get("href")]
-
-    def iterator(self, pages: int = 0, max_workers: int = 20, shorts: bool = False):
-        # 0 means “as many as practical” -> cap to a sane large number
-        if pages == 0:
-            pages = 99
-
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for idx in range(pages):
-                page_url = self._page_url(idx)
-
-                if page_url is None:
-                    # use pre-fetched HTML exactly once (idx == 0 in Something/* mode)
-                    content = self.pre_html
-                elif page_url == "":
-                    # explicit skip (idx == 1 in Something/* mode)
-                    continue
-                else:
-                    content = self.core.fetch(page_url)
-                    if isinstance(content, Response):
-                        break  # 404 or no more content...
-
-                if not content:
-                    continue
-
-                # --- Parse and schedule video creation ---
-                video_links = self._extract_video_links(content, shorts)
-                if not video_links:
-                    if self.is_search:
-                        continue
-                    else:
-                        break
-
-                if not shorts:
-                    futures = [executor.submit(self._make_video_safe, v) for v in video_links]
-
-                else:
-                    futures = [executor.submit(self._get_short, url) for url in video_links]
-
-                for fut in as_completed(futures):
-                    yield fut.result()
-
-
 class Something(Helper):
     def __init__(self, url: str, core: Optional[BaseCore] = None):
-        if core is None:
-            raise ValueError("core must be provided")
-        super().__init__(core)
+        super().__init__(core, video=Video, log_level=logging.ERROR, other=Short)
         self.url = url
-        self.is_search = False  # explicit
-        # pre-fetch: this page already contains the first batch of videos
         self.html_content = self.core.fetch(url)
-        self.pre_html = self.html_content
-        self.soup = BeautifulSoup(self.html_content, "html.parser")
+        self.soup = BeautifulSoup(self.html_content, "lxml")
 
     @cached_property
     def name(self) -> str:
@@ -180,14 +54,13 @@ class Something(Helper):
     def avatar_url(self) -> str:
         return REGEX_AVATAR.search(self.html_content).group(1)
 
-    def videos(self, pages: int = 2, max_workers: int = 20):
-        # idx==0 -> use pre_html
-        # idx==1 -> skip (same page)
-        # idx>=2 -> fetch f"{url}/{idx}"
-        yield from self.iterator(pages=pages, max_workers=max_workers)
+    def videos(self, pages: int = 2, videos_concurrency: int = 5, pages_concurrency: int = 2):
+        page_urls = [build_page_url(url=self.url, is_search=False, idx=page) for page in range(1, pages + 1)]
+        yield from self.iterator(page_urls=page_urls, extractor=extractor_html, videos_concurrency=videos_concurrency,
+                                 pages_concurrency=pages_concurrency)
 
     @cached_property
-    def get_information(self) -> dict:
+    def get_information(self) -> dict | None:
         container = self.soup.find("div", class_="personalInfo-5360e")
         if not container:
             return None # No User Information present...
@@ -206,12 +79,14 @@ class Something(Helper):
 
         return dictionary
 
-    def get_shorts(self):
+    def get_shorts(self, pages: int = 2, videos_concurrency: int = 2, pages_concurrency: int = 1):
         if not self.url.endswith("/"):
             self.url += "/"
 
         self.url += "shorts"
-        yield from self.iterator(shorts=True)
+        page_urls = [build_page_url(self.url, is_search=False, idx=page) for page in range(1, pages + 1)]
+        yield from self.iterator(other_return=True, extractor=extractor_shorts, page_urls=page_urls,
+                                 videos_concurrency=videos_concurrency, pages_concurrency=pages_concurrency)
 
 class Channel(Something):
     pass
@@ -323,9 +198,10 @@ class Video:
 
 class Client(Helper):
     def __init__(self, core: Optional[BaseCore] = None):
-        super().__init__(core)
+        super().__init__(core, video=Video)
         self.core = core or BaseCore(config=RuntimeConfig())
-        self.core.initialize_session(headers)
+        self.core.initialize_session()
+        self.core.session.headers.update(headers)
 
     def get_video(self, url: str) -> Video:
         return Video(url, core=self.core)
@@ -355,8 +231,7 @@ class Client(Helper):
         date: Literal["latest", "weekly", "monthly", "yearly"] = "",
         production: Literal["studios", "creators"] = "",
         fps: Literal["30", "60"] = "",
-                      pages: int = 2,
-                      max_workers: int = 20) -> Generator[Video, None, None]:
+        pages: int = 2, videos_concurrency: int = 2, pages_concurrency: int = 1,) -> Generator[Video, None, None]:
         path = quote(str(query), safe="")  # e.g. "4k cats & dogs" -> "4k%20cats%20%26%20dogs"
         base = f"https://xhamster.com/search/"
         url = base + path
@@ -392,11 +267,8 @@ class Client(Helper):
 
         query_string = urlencode(params, doseq=True)
         final_url = f"{url}?{query_string}" if query_string else url
+        page_urls = [build_page_url(url=final_url, is_search=True, idx=page) for page in range(1, pages + 1)]
+        yield from self.iterator(page_urls=page_urls, extractor=extractor_html, videos_concurrency=videos_concurrency,
+                                   pages_concurrency=pages_concurrency)
 
-        # Use Helper in search mode
-        helper = Helper(self.core)  # or however you construct it in your codebase
-        helper.url = final_url
-        helper.is_search = True  # critical: enables ?page= style
-        helper.pre_html = None  # not used for search
 
-        yield from helper.iterator(pages=pages, max_workers=max_workers)
