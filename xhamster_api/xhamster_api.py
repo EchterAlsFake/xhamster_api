@@ -54,8 +54,10 @@ class Something(Helper):
     def avatar_url(self) -> str:
         return REGEX_AVATAR.search(self.html_content).group(1)
 
-    def videos(self, pages: int = 2, videos_concurrency: int = 5, pages_concurrency: int = 2):
+    def videos(self, pages: int = 2, videos_concurrency: int = None, pages_concurrency: int = None):
         page_urls = [build_page_url(url=self.url, is_search=False, idx=page) for page in range(1, pages + 1)]
+        videos_concurrency = videos_concurrency or self.core.config.videos_concurrency
+        pages_concurrency = pages_concurrency or self.core.config.pages_concurrency
         yield from self.iterator(page_urls=page_urls, extractor=extractor_html, videos_concurrency=videos_concurrency,
                                  pages_concurrency=pages_concurrency)
 
@@ -231,10 +233,13 @@ class Client(Helper):
         date: Literal["latest", "weekly", "monthly", "yearly"] = "",
         production: Literal["studios", "creators"] = "",
         fps: Literal["30", "60"] = "",
-        pages: int = 2, videos_concurrency: int = 2, pages_concurrency: int = 1,) -> Generator[Video, None, None]:
+        pages: int = 2, videos_concurrency: int = None, pages_concurrency: int = None,) -> Generator[Video, None, None]:
         path = quote(str(query), safe="")  # e.g. "4k cats & dogs" -> "4k%20cats%20%26%20dogs"
         base = f"https://xhamster.com/search/"
         url = base + path
+
+        videos_concurrency = videos_concurrency or self.core.config.videos_concurrency
+        pages_concurrency = pages_concurrency or self.core.config.pages_concurrency
 
         params = {}
 
