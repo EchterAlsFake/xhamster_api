@@ -182,13 +182,13 @@ class Video:
         return self.core.get_segments(self.m3u8_base_url, quality)
 
     def download(self, quality, downloader, path="./", no_title = False, callback=None, remux: bool = False,
-                 remux_callback = None) -> bool:
+                 callback_remux = None) -> bool:
         if no_title is False:
             path = os.path.join(path, self.title + ".mp4")
 
         try:
             self.core.download(video=self, quality=quality, downloader=downloader, path=path, callback=callback,
-                           remux=remux, callback_remux=remux_callback)
+                           remux=remux, callback_remux=callback_remux)
             return True
 
         except Exception:
