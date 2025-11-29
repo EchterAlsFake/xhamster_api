@@ -3,7 +3,7 @@
 <div align="center">
     <a href="https://pepy.tech/project/xhamster_api"><img src="https://static.pepy.tech/badge/xhamster_api" alt="Downloads"></a>
     <a href="https://github.com/EchterAlsFake/xhamster_api/workflows/"><img src="https://github.com/EchterAlsFake/xhamster_api/workflows/CodeQL/badge.svg" alt="CodeQL Analysis"/></a>
-    <a href="https://github.com/EchterAlsFake/xhamster_api/actions/workflows/sync-tests.yml"><img src="https://github.com/EchterAlsFake/xhamster_api/actions/workflows/sync-tests.yml/badge.svg" alt="Sync API Tests"/></a>
+    <a href="https://echteralsfake.duckdns.org/ci/xhamster_api/badge.svg"><img src="https://echteralsfake.duckdns.org/ci/xhamster_api/badge.svg" alt="Sync API Tests"/></a>
 </div>
 
 # Description
