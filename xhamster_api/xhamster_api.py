@@ -14,13 +14,20 @@ try:
 except (ModuleNotFoundError, ImportError):
     from .modules.consts import *
 
+try:
+    import lxml
+    parser = "lxml"
+
+except (ModuleNotFoundError, ImportError):
+    parser = "html.parser"
+
 
 class Something(Helper):
     def __init__(self, url: str, core: Optional[BaseCore] = None):
         super().__init__(core, video=Video, log_level=logging.ERROR, other=Short)
         self.url = url
         self.html_content = self.core.fetch(url)
-        self.soup = BeautifulSoup(self.html_content, "lxml")
+        self.soup = BeautifulSoup(self.html_content, parser)
 
     @cached_property
     def name(self) -> str:

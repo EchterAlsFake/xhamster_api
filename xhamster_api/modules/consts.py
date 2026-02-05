@@ -2,6 +2,14 @@ import re
 
 from bs4 import BeautifulSoup
 from typing import List
+
+try:
+    import lxml
+    parser = "lxml"
+
+except (ModuleNotFoundError, ImportError):
+    parser = "html.parser"
+
 REGEX_M3U8 = re.compile(r'https://[^"]*?_TPL_\.(?:h264|av1)\.mp4\.m3u8')
 REGEX_TITLE = re.compile(r'<meta property="og:title" content="(.*?)"')
 REGEX_AUTHOR = re.compile(r'<div class="item-[^"]*?">.*?<img[^>]+?alt="([^"]+?)"[^>]*?>.*?<span class="body-[^"]*? label-[^"]*? label-[^"]*?">([^<]+?)</span>')
@@ -18,13 +26,14 @@ headers = {
 }
 
 def extractor_html(content: str) -> List[str]:
-    soup = BeautifulSoup(content, "lxml")
-    nodes = soup.find_all("a",class_="video-thumb__image-container role-pop thumb-image-container")
+    soup = BeautifulSoup(content, parser)
+    print(content)
+    nodes = soup.find_all("a",class_="video-thumb__image-container role-pop thumb-image-container ist-trigger")
     return [n.get("href") for n in nodes if n and n.get("href")]
 
 
 def extractor_shorts(content: str) -> List[str]:
-    soup = BeautifulSoup(content, "lxml")
+    soup = BeautifulSoup(content, parser)
     nodes = soup.find_all("a", class_="imageContainer-a870e role-pop thumb-image-container thumb-image-container--moment")
     return [n.get("href") for n in nodes if n and n.get("href")]
 
