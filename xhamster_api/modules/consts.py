@@ -27,7 +27,6 @@ headers = {
 
 def extractor_html(content: str) -> List[str]:
     soup = BeautifulSoup(content, parser)
-    print(content)
     nodes = soup.find_all("a",class_="video-thumb__image-container role-pop thumb-image-container ist-trigger")
     return [n.get("href") for n in nodes if n and n.get("href")]
 
