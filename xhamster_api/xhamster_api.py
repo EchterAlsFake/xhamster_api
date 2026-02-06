@@ -1,12 +1,13 @@
+from __future__ import annotations
 import os
 import logging
 import threading
 
 from functools import cached_property
 from urllib.parse import urlencode, quote
+from typing import Optional, Literal, Generator
 from base_api.modules.config import RuntimeConfig
 from base_api.base import BaseCore, setup_logger, Helper
-from typing import Optional, Literal, Generator
 
 try:
     from modules.consts import *
