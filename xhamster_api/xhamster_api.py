@@ -1,12 +1,12 @@
 import os
 import logging
-import traceback
+import threading
 
 from functools import cached_property
 from urllib.parse import urlencode, quote
 from base_api.modules.config import RuntimeConfig
 from base_api.base import BaseCore, setup_logger, Helper
-from typing import Optional, Literal, Generator, Union
+from typing import Optional, Literal, Generator
 
 try:
     from modules.consts import *
@@ -131,24 +131,40 @@ class Short:
     def m3u8_base_url(self) -> str:
         return REGEX_M3U8.search(self.content).group(0)
 
-    def get_segments(self) -> list:
-        return self.core.get_segments(self.m3u8_base_url, quality="best") # Why would you download it not in the best quality like seriously...
+    def get_segments(self, quality) -> list:
+        return self.core.get_segments(self.m3u8_base_url, quality=quality)
 
-    def download(self, quality: Union[int, str], downloader, path="./", no_title = False, callback=None, remux: bool = False,
-                 remux_callback = None) -> bool:
-        if no_title is False:
-            path = os.path.join(path, self.title + ".mp4")
+    def download(self, quality, path="./", callback=None, no_title=False, remux: bool = False,
+                 callback_remux=None, start_segment: int = 0, stop_event: Optional[threading.Event] = None,
+                 segment_state_path: Optional[str] = None, segment_dir: Optional[str] = None,
+                 return_report: bool = False, cleanup_on_stop: bool = True, keep_segment_dir: bool = False
+                 ) -> bool:
+        """
+        :param callback:
+        :param quality:
+        :param path:
+        :param no_title:
+        :param remux:
+        :param callback_remux:
+        :param start_segment:
+        :param stop_event:
+        :param segment_state_path:
+        :param segment_dir:
+        :param return_report:
+        :param cleanup_on_stop:
+        :param keep_segment_dir:
+        :return:
+        """
 
-        try:
-            self.core.download(video=self, quality=quality, downloader=downloader, path=path, callback=callback,
-                           remux=remux, callback_remux=remux_callback)
-            return True
+        if not no_title:
+            path = os.path.join(path, f"{self.title}.mp4")
 
-        except Exception:
-            error = traceback.format_exc()
-            print(error)
-            self.logger.error(error)
-            return False
+
+        return self.core.download(video=self, quality=quality, path=path, callback=callback, remux=remux,
+                                  callback_remux=callback_remux, start_segment=start_segment, stop_event=stop_event,
+                                  segment_state_path=segment_state_path, segment_dir=segment_dir,
+                                  return_report=return_report,
+                                  cleanup_on_stop=cleanup_on_stop, keep_segment_dir=keep_segment_dir)
 
 
 class Video:
@@ -185,24 +201,39 @@ class Video:
         self.logger.debug(f"M3U8 URL: {fixed_url}")
         return fixed_url
 
-    def get_segments(self, quality):
-        return self.core.get_segments(self.m3u8_base_url, quality)
+    def get_segments(self, quality) -> list:
+        return self.core.get_segments(self.m3u8_base_url, quality=quality)
 
-    def download(self, quality, downloader, path="./", no_title = False, callback=None, remux: bool = False,
-                 callback_remux = None) -> bool:
-        if no_title is False:
-            path = os.path.join(path, self.title + ".mp4")
+    def download(self, quality, path="./", callback=None, no_title=False, remux: bool = False,
+                 callback_remux=None, start_segment: int = 0, stop_event: Optional[threading.Event] = None,
+                 segment_state_path: Optional[str] = None, segment_dir: Optional[str] = None,
+                 return_report: bool = False, cleanup_on_stop: bool = True, keep_segment_dir: bool = False
+                 ) -> bool:
+        """
+        :param callback:
+        :param quality:
+        :param path:
+        :param no_title:
+        :param remux:
+        :param callback_remux:
+        :param start_segment:
+        :param stop_event:
+        :param segment_state_path:
+        :param segment_dir:
+        :param return_report:
+        :param cleanup_on_stop:
+        :param keep_segment_dir:
+        :return:
+        """
 
-        try:
-            self.core.download(video=self, quality=quality, downloader=downloader, path=path, callback=callback,
-                           remux=remux, callback_remux=callback_remux)
-            return True
+        if not no_title:
+            path = os.path.join(path, f"{self.title}.mp4")
 
-        except Exception:
-            error = traceback.format_exc()
-            print(error)
-            self.logger.error(error)
-            return False
+        return self.core.download(video=self, quality=quality, path=path, callback=callback, remux=remux,
+                                  callback_remux=callback_remux, start_segment=start_segment, stop_event=stop_event,
+                                  segment_state_path=segment_state_path, segment_dir=segment_dir,
+                                  return_report=return_report,
+                                  cleanup_on_stop=cleanup_on_stop, keep_segment_dir=keep_segment_dir)
 
 
 class Client(Helper):
@@ -282,5 +313,4 @@ class Client(Helper):
         page_urls = [build_page_url(url=final_url, is_search=True, idx=page) for page in range(1, pages + 1)]
         yield from self.iterator(page_urls=page_urls, extractor=extractor_html, videos_concurrency=videos_concurrency,
                                    pages_concurrency=pages_concurrency)
-
 
