@@ -7,10 +7,11 @@ from builtins import isinstance
 from functools import cached_property
 from urllib.parse import urlencode, quote
 from base_api.modules.config import RuntimeConfig
-from typing import Optional, Literal, AsyncGenerator, Any, Dict, Callable
+from typing import Literal, AsyncGenerator, Any, Dict, Callable
 from base_api.base import BaseCore, setup_logger, Helper
 from base_api.modules.type_hints import DownloadReport
 from curl_cffi import AsyncSession
+from base_api.modules.type_hints import DownloadReport
 
 try:
     from modules.consts import *
@@ -33,7 +34,7 @@ class Something(Helper):
         self.soup: BeautifulSoup = soup
 
     @classmethod
-    async def init(cls, url: str, core: BaseCore, html_content: Optional[str] = None) -> Something:
+    async def init(cls, url: str, core: BaseCore, html_content: str | None = None) -> Something:
         if not html_content:
             response = await core.fetch(url)
             # Ensure we have a string for BeautifulSoup
@@ -86,7 +87,7 @@ class Something(Helper):
     def avatar_url(self) -> str:
         return REGEX_AVATAR.search(self.html_content).group(1)
 
-    async def videos(self, pages: int = 2, videos_concurrency: Optional[int] = None, pages_concurrency: Optional[int] = None) -> AsyncGenerator[Video, None]:
+    async def videos(self, pages: int = 2, videos_concurrency: int | None = None, pages_concurrency: int | None = None) -> AsyncGenerator[Video, None]:
         page_urls = [build_page_url(url=self.url, is_search=False, idx=page) for page in range(1, pages + 1)]
         videos_concurrency = videos_concurrency or self.core.config.videos_concurrency
         pages_concurrency = pages_concurrency or self.core.config.pages_concurrency
@@ -140,7 +141,7 @@ class Creator(Something):
     pass
 
 class Short:
-    def __init__(self, url: str, core: Optional[BaseCore] = None, html_content: Optional[str] = None):
+    def __init__(self, url: str, core: BaseCore, html_content: str | None = None):
         self.core = core
         self.url = url
         self.logger = setup_logger(name="XHamster API - [Short]")
@@ -174,11 +175,11 @@ class Short:
     async def get_segments(self, quality: str | int) -> List[Any]:
         return await self.core.get_segments(self.m3u8_base_url, quality=quality)
 
-    async def download(self, quality: str | int, path: str = "./", callback: Optional[Callable] = None, no_title: bool = False, remux: bool = False,
-                 callback_remux: Optional[Callable] = None, start_segment: int = 0, stop_event: Optional[threading.Event] = None,
-                 segment_state_path: Optional[str] = None, segment_dir: Optional[str] = None,
-                 return_report: bool = False, cleanup_on_stop: bool = True, keep_segment_dir: bool = False
-                 ) -> bool | Dict[str, Any]:
+    async def download(self, quality: str | int, path: str = "./", callback: Callable[[int, int], None] | None = None, no_title: bool = False, remux: bool = False,
+                       callback_remux: Callable[[int, int], None] | None = None, start_segment: int = 0, stop_event: threading.Event | None = None,
+                       segment_state_path: str | None = None, segment_dir: str | None = None,
+                       return_report: bool = False, cleanup_on_stop: bool = True, keep_segment_dir: bool = False
+                       ) -> bool | DownloadReport | None:
         """
         :param callback:
         :param quality:
@@ -208,7 +209,7 @@ class Short:
 
 
 class Video:
-    def __init__(self, url: str, core: Optional[BaseCore] = None, html_content: Optional[str] = None):
+    def __init__(self, url: str, core: BaseCore, html_content: str | None = None):
         self.core = core
         self.url = url
         self.logger = setup_logger(name="XHamster API - [Video]")
@@ -224,7 +225,7 @@ class Video:
         return await self.core.fetch(self.url)
 
 
-    def enable_logging(self, log_file: Optional[str] = None, level: Optional[int] = None, log_ip: Optional[str] = None, log_port: Optional[int] = None) -> None:
+    def enable_logging(self, log_file: str | None = None, level: int = logging.DEBUG, log_ip: str | None = None, log_port: int | None = None) -> None:
         self.logger = setup_logger(name="XHamster API - [Video]", level=level, log_file=log_file, http_ip=log_ip, http_port=log_port)
 
     @cached_property
