@@ -2,12 +2,15 @@ from __future__ import annotations
 import os
 import logging
 import threading
+from builtins import isinstance
 
 from functools import cached_property
 from urllib.parse import urlencode, quote
 from base_api.modules.config import RuntimeConfig
 from typing import Optional, Literal, AsyncGenerator, Any, Dict, Callable
 from base_api.base import BaseCore, setup_logger, Helper
+from base_api.modules.type_hints import DownloadReport
+from curl_cffi import AsyncSession
 
 try:
     from modules.consts import *
@@ -24,7 +27,7 @@ except (ModuleNotFoundError, ImportError):
 class Something(Helper):
     def __init__(self, soup: BeautifulSoup, url: str, core: BaseCore,
                  html_content: str):
-        super().__init__(core, video=Video, log_level=logging.ERROR, other=Short)
+        super().__init__(core, video_constructor=Video, log_level=logging.ERROR, alternative_constructor=Short)
         self.url = url
         self.html_content = html_content
         self.soup: BeautifulSoup = soup
@@ -87,8 +90,8 @@ class Something(Helper):
         page_urls = [build_page_url(url=self.url, is_search=False, idx=page) for page in range(1, pages + 1)]
         videos_concurrency = videos_concurrency or self.core.config.videos_concurrency
         pages_concurrency = pages_concurrency or self.core.config.pages_concurrency
-        async for video in self.iterator(page_urls=page_urls, extractor=extractor_html, videos_concurrency=videos_concurrency,
-                                 pages_concurrency=pages_concurrency):
+        async for video in self.iterator(use_alternative_constructor=True, video_link_extractor=extractor_shorts, target_page_urls=page_urls,
+                                 max_video_concurrency=videos_concurrency, max_page_concurrency=pages_concurrency):
             yield await video.init()
 
     @cached_property
@@ -119,8 +122,8 @@ class Something(Helper):
 
         self.url += "shorts"
         page_urls = [build_page_url(self.url, is_search=False, idx=page) for page in range(1, pages + 1)]
-        async for short in self.iterator(other_return=True, extractor=extractor_shorts, page_urls=page_urls,
-                                 videos_concurrency=videos_concurrency, pages_concurrency=pages_concurrency):
+        async for short in self.iterator(use_alternative_constructor=True, video_link_extractor=extractor_shorts, target_page_urls=page_urls,
+                                 max_video_concurrency=videos_concurrency, max_page_concurrency=pages_concurrency):
             yield await short.init()
 
 class Channel(Something):
@@ -249,13 +252,14 @@ class Video:
         return fixed_url
 
     async def get_segments(self, quality: str | int) -> List[Any]:
+        assert isinstance(self.core, BaseCore)
         return await self.core.get_segments(self.m3u8_base_url, quality=quality)
 
     async def download(self, quality: str | int, path: str = "./", callback: Optional[Callable] = None, no_title: bool = False, remux: bool = False,
                  callback_remux: Optional[Callable] = None, start_segment: int = 0, stop_event: Optional[threading.Event] = None,
                  segment_state_path: Optional[str] = None, segment_dir: Optional[str] = None,
                  return_report: bool = False, cleanup_on_stop: bool = True, keep_segment_dir: bool = False
-                 ) -> bool | Dict[str, Any]:
+                 ) -> bool | DownloadReport | None:
         """
         :param callback:
         :param quality:
@@ -276,6 +280,7 @@ class Video:
         if not no_title:
             path = os.path.join(path, f"{self.title}.mp4")
 
+        assert isinstance(self.core, BaseCore)
         return await self.core.download(video=self, quality=quality, path=path, callback=callback, remux=remux,
                                   callback_remux=callback_remux, start_segment=start_segment, stop_event=stop_event,
                                   segment_state_path=segment_state_path, segment_dir=segment_dir,
@@ -284,10 +289,11 @@ class Video:
 
 
 class Client(Helper):
-    def __init__(self, core: Optional[BaseCore] = None):
-        super().__init__(core, video=Video)
-        self.core = core or BaseCore(config=RuntimeConfig())
+    def __init__(self, core: BaseCore):
+        super().__init__(core=core, video_constructor=Video)
+        self.core = core or BaseCore(configuration=RuntimeConfig())
         self.core.initialize_session()
+        assert isinstance(self.core.session, AsyncSession)
         self.core.session.headers.update(headers)
 
     async def get_video(self, url: str) -> Video:
@@ -309,24 +315,24 @@ class Client(Helper):
 
     async def search_videos(self, query: str,
         minimum_quality: Literal["720p", "1080p", "2160p"] = "720p",
-        sort_by: Literal["views", "newest", "best", "longest"] = "", # Empty string sorts by rlevance
+        sort_by: Literal["views", "newest", "best", "longest"] | None = None, # Empty string sorts by relevance
 
         category: Literal["german", "amateur", "18-year-old", "granny", "anal", "old-young", "mature",
         "mom", "milf", "big-tits", "big-natural-tits", "lesbian", "teen", "cum-in-mouth", "bdsm",
-        "porn-for-women", "russian", "vintage", "hairy", "brutal-sex"] | List[str] = "",
+        "porn-for-women", "russian", "vintage", "hairy", "brutal-sex"] | List[str] | None = None ,
         vr: bool = False,
         full_length_only: bool = False,
-        min_duration: Literal["2", "5", "10", "30", "40"] = "",
-        date: Literal["latest", "weekly", "monthly", "yearly"] = "",
-        production: Literal["studios", "creators"] = "",
-        fps: Literal["30", "60"] = "",
+        min_duration: Literal["2", "5", "10", "30", "40"] | None = None,
+        date: Literal["latest", "weekly", "monthly", "yearly"] | None = None,
+        production: Literal["studios", "creators"] | None = None,
+        fps: Literal["30", "60"] | None = None,
         pages: int = 2, videos_concurrency: Optional[int] = None, pages_concurrency: Optional[int] = None,) -> AsyncGenerator[Video, None]:
         path = quote(str(query), safe="")  # e.g. "4k cats & dogs" -> "4k%20cats%20%26%20dogs"
         base = f"https://xhamster.com/search/"
         url = base + path
 
-        videos_concurrency = videos_concurrency or self.core.config.videos_concurrency
-        pages_concurrency = pages_concurrency or self.core.config.pages_concurrency
+        videos_concurrency = videos_concurrency or self.core.configuration.videos_concurrency
+        pages_concurrency = pages_concurrency or self.core.configuration.pages_concurrency
 
         params = {}
 
@@ -360,8 +366,11 @@ class Client(Helper):
         query_string = urlencode(params, doseq=True)
         final_url = f"{url}?{query_string}" if query_string else url
         page_urls = [build_page_url(url=final_url, is_search=True, idx=page) for page in range(1, pages + 1)]
-        async for video in self.iterator(page_urls=page_urls, extractor=extractor_html, videos_concurrency=videos_concurrency,
-                                   pages_concurrency=pages_concurrency):
+        assert isinstance(videos_concurrency, int)
+        assert isinstance(pages_concurrency, int)
+
+        async for video in self.iterator(use_alternative_constructor=True, video_link_extractor=extractor_shorts, target_page_urls=page_urls,
+                                 max_video_concurrency=videos_concurrency, max_page_concurrency=pages_concurrency):
             yield await video.init()
 
 async def main():
