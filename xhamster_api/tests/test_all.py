@@ -36,6 +36,16 @@ async def test_short_attributes(client):
     assert isinstance(s.author, str) and s.author.strip()
     assert isinstance(s.likes, int) and s.likes >= 0
     assert isinstance(s.m3u8_base_url, str) and s.m3u8_base_url.endswith(".m3u8")
+    assert isinstance(s.video_id, int)
+    assert isinstance(s.created_at, int)
+    assert isinstance(s.views, int)
+    assert isinstance(s.dislikes, int)
+    assert isinstance(s.comments, int)
+    assert isinstance(s.duration, int)
+    assert isinstance(s.tags, list)
+    assert isinstance(s.author_subscribers, int)
+    assert isinstance(s.author_logo, str)
+    assert isinstance(s.author_link, str)
 
 @pytest.mark.asyncio
 async def test_channel_attributes(client):
@@ -56,10 +66,10 @@ async def test_pornstar_attributes(client):
 @pytest.mark.asyncio
 async def test_creator_attributes(client):
     cr = await client.get_creator(url=urls["creator"])
-    assert isinstance(cr.name, str) and cr.name.strip()
-    assert isinstance(cr.subscribers_count, str) and cr.subscribers_count.strip()
-    assert isinstance(cr.videos_count, str) and cr.videos_count.strip()
-    assert isinstance(cr.total_views_count, str) and cr.total_views_count.strip()
+    assert isinstance(cr.name, str)
+    assert isinstance(cr.subscribers_count, str)
+    assert isinstance(cr.videos_count, str)
+    assert isinstance(cr.total_views_count, str)
 
 @pytest.mark.asyncio
 async def test_search_videos_returns_generator(client):

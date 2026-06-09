@@ -1,28 +1,57 @@
 from __future__ import annotations
 import os
 import logging
+import demjson3
 import threading
-from builtins import isinstance
+
 
 from functools import cached_property
 from urllib.parse import urlencode, quote
 from base_api.modules.config import RuntimeConfig
-from typing import Literal, AsyncGenerator, Any, Dict, Callable
+from base_api.modules.errors import NetworkingError, BotProtectionDetected, UnknownError, InvalidProxy
+from typing import Literal, AsyncGenerator, Any, Dict, List
 from base_api.base import BaseCore, setup_logger, Helper
-from base_api.modules.type_hints import DownloadReport
-from curl_cffi import AsyncSession
+from curl_cffi import AsyncSession, Response
 from base_api.modules.type_hints import DownloadReport
 
 try:
     from modules.consts import *
+    from modules.errors import *
+    from modules.type_hints import callback_hint
 except (ModuleNotFoundError, ImportError):
     from .modules.consts import *
+    from .modules.errors import *
+    from .modules.type_hints import callback_hint
 
 try:
     import lxml
     parser = "lxml"
 except (ModuleNotFoundError, ImportError):
     parser = "html.parser"
+
+
+async def get_html_content(core: BaseCore, url: str) -> str | None:
+    # What should I do here?
+    try:
+        content = await core.fetch(url)
+        if isinstance(content, str):
+            return content
+
+        if isinstance(content, Response):
+            if content.status_code == 404:
+                raise NotFound(f"Server returned 404 for: {url}")
+
+    except NetworkingError:
+        raise NetworkError from NetworkingError
+
+    except InvalidProxy:
+        raise ProxyError from InvalidProxy
+
+    except BotProtectionDetected:
+        raise BotDetection from BotProtectionDetected
+
+    except UnknownError:
+        raise UnknownNetworkError from UnknownError
 
 
 class Something(Helper):
@@ -89,8 +118,10 @@ class Something(Helper):
 
     async def videos(self, pages: int = 2, videos_concurrency: int | None = None, pages_concurrency: int | None = None) -> AsyncGenerator[Video, None]:
         page_urls = [build_page_url(url=self.url, is_search=False, idx=page) for page in range(1, pages + 1)]
-        videos_concurrency = videos_concurrency or self.core.config.videos_concurrency
-        pages_concurrency = pages_concurrency or self.core.config.pages_concurrency
+        videos_concurrency = videos_concurrency or self.core.configuration.videos_concurrency
+        pages_concurrency = pages_concurrency or self.core.configuration.pages_concurrency
+        assert videos_concurrency and pages_concurrency
+
         async for video in self.iterator(use_alternative_constructor=True, video_link_extractor=extractor_shorts, target_page_urls=page_urls,
                                  max_video_concurrency=videos_concurrency, max_page_concurrency=pages_concurrency):
             yield await video.init()
@@ -149,34 +180,104 @@ class Short:
 
     async def init(self) -> Short:
         if not self.html_content:
-            self.html_content = await self.get_html_content()
+            self.html_content = await get_html_content(core=self.core, url=self.url)
+            assert self.html_content
 
         return self
 
-    async def get_html_content(self) -> str:
-        return await self.core.fetch(self.url)
+    @cached_property
+    def data(self) -> dict:
+        assert self.html_content
+        soup = BeautifulSoup(self.html_content, parser)
+        script = soup.find("script", attrs={"id": "initials-script"}).text
+        # Extract the JSON part after 'window.initials='
+        json_text = script.split("window.initials=", 1)[-1].strip().rstrip(";")
+        return demjson3.decode(json_text)
 
     @cached_property
     def title(self) -> str:
-        return REGEX_TITLE.search(self.html_content).group(1)
+        return self.data.get('layoutPage', {}).get('momentProps', {}).get('title', '')
 
     @cached_property
     def author(self) -> str:
-        return REGEX_AUTHOR_SHORTS.search(self.html_content).group(1)
+        author = self.data.get('layoutPage', {}).get('momentProps', {}).get('landing', {}).get('name')
+        return str(author) if author else ""
 
     @cached_property
     def likes(self) -> int:
-        return int(REGEX_LIKES_SHORTS.search(self.html_content).group(1))
+        likes = self.data.get('layoutPage', {}).get('momentProps', {}).get('ratingModel', {}).get('likes')
+        return int(likes) if likes is not None else 0
+
+    @cached_property
+    def dislikes(self) -> int:
+        dislikes = self.data.get('layoutPage', {}).get('momentProps', {}).get('ratingModel', {}).get('dislikes')
+        return int(dislikes) if dislikes is not None else 0
+
+    @cached_property
+    def views(self) -> int:
+        views = self.data.get('layoutPage', {}).get('momentProps', {}).get('views')
+        return int(views) if views is not None else 0
+
+    @cached_property
+    def comments(self) -> int:
+        comments = self.data.get('layoutPage', {}).get('momentProps', {}).get('comments')
+        return int(comments) if comments is not None else 0
+
+    @cached_property
+    def duration(self) -> int:
+        duration = self.data.get('xplayerSettings', {}).get('duration')
+        return int(duration) if duration is not None else 0
+
+    @cached_property
+    def video_id(self) -> int:
+        video_id = self.data.get('xplayerSettings', {}).get('videoId')
+        if not video_id:
+             video_id = self.data.get('layoutPage', {}).get('momentProps', {}).get('id')
+        return int(video_id) if video_id is not None else 0
+
+    @cached_property
+    def created_at(self) -> int:
+        created = self.data.get('layoutPage', {}).get('momentProps', {}).get('created')
+        return int(created) if created is not None else 0
+
+    @cached_property
+    def tags(self) -> List[str]:
+        tags = self.data.get('layoutPage', {}).get('momentProps', {}).get('tags', [])
+        return [tag.get('name') for tag in tags if tag.get('name')]
+
+    @cached_property
+    def author_subscribers(self) -> int:
+        subscribers = self.data.get('layoutPage', {}).get('momentProps', {}).get('landing', {}).get('subscribers')
+        return int(subscribers) if subscribers is not None else 0
+
+    @cached_property
+    def author_logo(self) -> str:
+        return self.data.get('layoutPage', {}).get('momentProps', {}).get('landing', {}).get('logo', '')
+
+    @cached_property
+    def author_link(self) -> str:
+        return self.data.get('layoutPage', {}).get('momentProps', {}).get('landing', {}).get('link', '')
+
+    @cached_property
+    def thumb_url(self) -> str:
+        return self.data.get('layoutPage', {}).get('momentProps', {}).get('thumbUrl', '')
+
+    @cached_property
+    def poster_url(self) -> str:
+        return self.data.get('layoutPage', {}).get('momentProps', {}).get('posterUrl', '')
 
     @cached_property
     def m3u8_base_url(self) -> str:
-        return REGEX_M3U8.search(self.html_content).group(0)
+        url = self.data.get('xplayerSettings', {}).get('sources', {}).get('hls', {}).get('h264', {}).get('url')
+        if not url:
+            url = self.data.get('layoutPage', {}).get('momentProps', {}).get('sources', {}).get('hls', {}).get('h264', {}).get('url')
+        return str(url) if url else ""
 
     async def get_segments(self, quality: str | int) -> List[Any]:
         return await self.core.get_segments(self.m3u8_base_url, quality=quality)
 
-    async def download(self, quality: str | int, path: str = "./", callback: Callable[[int, int], None] | None = None, no_title: bool = False, remux: bool = False,
-                       callback_remux: Callable[[int, int], None] | None = None, start_segment: int = 0, stop_event: threading.Event | None = None,
+    async def download(self, quality: str | int, path: str = "./", callback: callback_hint = None, no_title: bool = False, remux: bool = False,
+                       callback_remux: callback_hint = None, start_segment: int = 0, stop_event: threading.Event | None = None,
                        segment_state_path: str | None = None, segment_dir: str | None = None,
                        return_report: bool = False, cleanup_on_stop: bool = True, keep_segment_dir: bool = False
                        ) -> bool | DownloadReport | None:
@@ -217,13 +318,9 @@ class Video:
 
     async def init(self) -> Video:
         if not self.html_content:
-            self.html_content = await self.core.fetch(self.url)
+            self.html_content = await get_html_content(core=self.core, url=self.url)
 
         return self
-
-    async def get_html_content(self) -> str:
-        return await self.core.fetch(self.url)
-
 
     def enable_logging(self, log_file: str | None = None, level: int = logging.DEBUG, log_ip: str | None = None, log_port: int | None = None) -> None:
         self.logger = setup_logger(name="XHamster API - [Video]", level=level, log_file=log_file, http_ip=log_ip, http_port=log_port)
@@ -256,9 +353,10 @@ class Video:
         assert isinstance(self.core, BaseCore)
         return await self.core.get_segments(self.m3u8_base_url, quality=quality)
 
-    async def download(self, quality: str | int, path: str = "./", callback: Optional[Callable] = None, no_title: bool = False, remux: bool = False,
-                 callback_remux: Optional[Callable] = None, start_segment: int = 0, stop_event: Optional[threading.Event] = None,
-                 segment_state_path: Optional[str] = None, segment_dir: Optional[str] = None,
+    async def download(self, quality: str | int, path: str = "./", callback: callback_hint = None
+                       , no_title: bool = False, remux: bool = False,
+                 callback_remux: callback_hint = None, start_segment: int = 0, stop_event: threading.Event | None = None,
+                 segment_state_path: str | None = None, segment_dir: str | None = None,
                  return_report: bool = False, cleanup_on_stop: bool = True, keep_segment_dir: bool = False
                  ) -> bool | DownloadReport | None:
         """
@@ -290,9 +388,8 @@ class Video:
 
 
 class Client(Helper):
-    def __init__(self, core: BaseCore):
+    def __init__(self, core: BaseCore = BaseCore(RuntimeConfig())):
         super().__init__(core=core, video_constructor=Video)
-        self.core = core or BaseCore(configuration=RuntimeConfig())
         self.core.initialize_session()
         assert isinstance(self.core.session, AsyncSession)
         self.core.session.headers.update(headers)
@@ -327,7 +424,7 @@ class Client(Helper):
         date: Literal["latest", "weekly", "monthly", "yearly"] | None = None,
         production: Literal["studios", "creators"] | None = None,
         fps: Literal["30", "60"] | None = None,
-        pages: int = 2, videos_concurrency: Optional[int] = None, pages_concurrency: Optional[int] = None,) -> AsyncGenerator[Video, None]:
+        pages: int = 2, videos_concurrency: int | None = None, pages_concurrency: int | None = None,) -> AsyncGenerator[Video, None]:
         path = quote(str(query), safe="")  # e.g. "4k cats & dogs" -> "4k%20cats%20%26%20dogs"
         base = f"https://xhamster.com/search/"
         url = base + path
@@ -373,13 +470,3 @@ class Client(Helper):
         async for video in self.iterator(use_alternative_constructor=True, video_link_extractor=extractor_shorts, target_page_urls=page_urls,
                                  max_video_concurrency=videos_concurrency, max_page_concurrency=pages_concurrency):
             yield await video.init()
-
-async def main():
-    client = Client()
-    pornstar = await client.get_channel("https://ge.xhamster.com/pornstars/tiffany-montavani")
-    print(f"Name: {pornstar.name}")
-
-
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
