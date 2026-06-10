@@ -10,10 +10,45 @@
 XHamster API is an API for xhamster.com. It allows you to fetch information from videos using regexes and requests.
 
 # Disclaimer
-> [!IMPORTANT] 
-> XHamster API is in violation to the ToS of xhamster.com!
-> If you are the website owner of xhamster.com, contact me at my E-Mail, and I'll take this repository immediately offline.
-> EchterAlsFake@proton.me
+> [!IMPORTANT]
+> This is an unofficial and unaffiliated project. Please read the full disclaimer before use:
+> **[DISCLAIMER.md](https://github.com/EchterAlsFake/API_Docs/blob/master/Disclaimer.md)**
+>
+> By using this project you agree to comply with the target site’s rules, copyright/licensing requirements,
+> and applicable laws. Do not use it to bypass access controls or scrape at disruptive rates.
+
+# Features
+- Fetch videos + metadata
+- Download videos
+- Fetch Channels
+- Fetch Pornstars
+- Fetch Creators
+- Fetch Shorts
+- Search for videos
+- Fetch playlists
+- Asynchronous
+- Built-in caching
+- Easy interface
+- Great type hinting
+
+#### Networking Features
+- HTTP 2.0 / HTTP 3.0
+- Browser impersonation
+- Custom JA3
+- All proxy types
+- Proxy authentication
+- Speed Limit
+- DNS over HTTPS
+- And even more...
+- All of this is configurable and can be adjusted as you like!
+
+# Supported Platforms
+This API has been tested and confirmed working on:
+
+- Windows 11 (x64) 
+- macOS Sequoia (x86_64)
+- Linux (Arch) (x86_64)
+- Android 16 (aarch64)
 
 # Quickstart
 
@@ -24,17 +59,19 @@ XHamster API is an API for xhamster.com. It allows you to fetch information from
 ```python
 from xhamster_api import Client
 # Initialize a Client object
-client = Client()
 
-# Fetch a video
-video_object = client.get_video("<insert_url_here>")
-
-# Information from Video objects
-print(video_object.title)
-print(video_object.likes)
-# Download the video
-
-video_object.download(downloader="threaded", quality="best", path="your_output_path + filename")
+async def main():
+    client = Client()
+    
+    # Fetch a video
+    video_object = await client.get_video("<insert_url_here>")
+    
+    # Information from Video objects
+    print(video_object.title)
+    print(video_object.likes)
+    # Download the video
+    
+    await video_object.download(downloader="threaded", quality="best", path="your_output_path + filename")
 
 # SEE DOCUMENTATION FOR MORE
 ```
@@ -58,4 +95,4 @@ Pull requests are also welcome.
 
 # License
 Licensed under the LGPLv3 License
-<br>Copyright (C) 2023–2025 Johannes Habel
+<br>Copyright (C) 2023–2026 Johannes Habel
