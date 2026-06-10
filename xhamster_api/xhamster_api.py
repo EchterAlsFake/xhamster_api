@@ -30,7 +30,7 @@ except (ModuleNotFoundError, ImportError):
     parser = "html.parser"
 
 
-async def get_html_content(core: BaseCore, url: str) -> str | None:
+async def get_html_content(core: BaseCore, url: str) -> str | None | dict:
     # What should I do here?
     try:
         content = await core.fetch(url)
@@ -41,17 +41,17 @@ async def get_html_content(core: BaseCore, url: str) -> str | None:
             if content.status_code == 404:
                 raise NotFound(f"Server returned 404 for: {url}")
 
-    except NetworkingError:
-        raise NetworkError from NetworkingError
+    except NetworkingError as e:
+        raise NetworkError(str(e)) from e
 
-    except InvalidProxy:
-        raise ProxyError from InvalidProxy
+    except InvalidProxy as e:
+        raise ProxyError(str(e)) from e
 
-    except BotProtectionDetected:
-        raise BotDetection from BotProtectionDetected
+    except BotProtectionDetected as e:
+        raise BotDetection(str(e)) from e
 
-    except UnknownError:
-        raise UnknownNetworkError from UnknownError
+    except UnknownError as e:
+        raise UnknownNetworkError(str(e)) from e
 
 
 class Something(Helper):
