@@ -7,12 +7,12 @@ import threading
 
 from functools import cached_property
 from urllib.parse import urlencode, quote
-from base_api.modules.config import RuntimeConfig
-from base_api.modules.errors import NetworkingError, BotProtectionDetected, UnknownError, InvalidProxy
-from typing import Literal, AsyncGenerator, Any, Dict, List
-from base_api.base import BaseCore, setup_logger, Helper
 from curl_cffi import AsyncSession, Response
+from base_api.modules.config import RuntimeConfig
+from typing import Literal, AsyncGenerator, Any, Dict
 from base_api.modules.type_hints import DownloadReport
+from base_api.base import BaseCore, setup_logger, Helper
+from base_api.modules.errors import NetworkingError, BotProtectionDetected, UnknownError, InvalidProxy, ResourceGone
 
 try:
     from modules.consts import *
@@ -29,6 +29,14 @@ try:
 except (ModuleNotFoundError, ImportError):
     parser = "html.parser"
 
+
+async def on_error(url: str, error: Exception, attempt: int) -> bool:
+    print(f"URL: {url}, ERROR: {error}, Attempt: {attempt}")
+
+    if isinstance(error, ResourceGone):
+        return False
+
+    return True
 
 async def get_html_content(core: BaseCore, url: str) -> str | None | dict:
     # What should I do here?
@@ -116,14 +124,18 @@ class Something(Helper):
     def avatar_url(self) -> str:
         return REGEX_AVATAR.search(self.html_content).group(1)
 
-    async def videos(self, pages: int = 2, videos_concurrency: int | None = None, pages_concurrency: int | None = None) -> AsyncGenerator[Video, None]:
+    async def videos(self, pages: int = 2, videos_concurrency: int | None = None, pages_concurrency: int | None = None,
+                     on_video_error: on_error_hint = on_error,
+                     on_page_error: on_error_hint = None
+                     ) -> AsyncGenerator[Video, None]:
         page_urls = [build_page_url(url=self.url, is_search=False, idx=page) for page in range(1, pages + 1)]
         videos_concurrency = videos_concurrency or self.core.configuration.videos_concurrency
         pages_concurrency = pages_concurrency or self.core.configuration.pages_concurrency
         assert videos_concurrency and pages_concurrency
 
         async for video in self.iterator(use_alternative_constructor=True, video_link_extractor=extractor_shorts, target_page_urls=page_urls,
-                                 max_video_concurrency=videos_concurrency, max_page_concurrency=pages_concurrency):
+                                 max_video_concurrency=videos_concurrency, max_page_concurrency=pages_concurrency,
+                                         on_video_error=on_video_error, on_page_error=on_page_error):
             yield await video.init()
 
     @cached_property
@@ -148,14 +160,18 @@ class Something(Helper):
 
         return dictionary
 
-    async def get_shorts(self, pages: int = 2, videos_concurrency: int = 2, pages_concurrency: int = 1) -> AsyncGenerator[Short, None]:
+    async def get_shorts(self, pages: int = 2, videos_concurrency: int = 2, pages_concurrency: int = 1,
+                         on_video_error: on_error_hint = on_error,
+                         on_page_error: on_error_hint = None
+                         ) -> AsyncGenerator[Short, None]:
         if not self.url.endswith("/"):
             self.url += "/"
 
         self.url += "shorts"
         page_urls = [build_page_url(self.url, is_search=False, idx=page) for page in range(1, pages + 1)]
         async for short in self.iterator(use_alternative_constructor=True, video_link_extractor=extractor_shorts, target_page_urls=page_urls,
-                                 max_video_concurrency=videos_concurrency, max_page_concurrency=pages_concurrency):
+                                 max_video_concurrency=videos_concurrency, max_page_concurrency=pages_concurrency,
+                                         on_video_error=on_video_error, on_page_error=on_page_error):
             yield await short.init()
 
 class Channel(Something):
@@ -424,7 +440,10 @@ class Client(Helper):
         date: Literal["latest", "weekly", "monthly", "yearly"] | None = None,
         production: Literal["studios", "creators"] | None = None,
         fps: Literal["30", "60"] | None = None,
-        pages: int = 2, videos_concurrency: int | None = None, pages_concurrency: int | None = None,) -> AsyncGenerator[Video, None]:
+        pages: int = 2, videos_concurrency: int | None = None, pages_concurrency: int | None = None,
+                            on_video_error: on_error_hint = on_error,
+                            on_page_error: on_error_hint = None
+                            ) -> AsyncGenerator[Video, None]:
         path = quote(str(query), safe="")  # e.g. "4k cats & dogs" -> "4k%20cats%20%26%20dogs"
         base = f"https://xhamster.com/search/"
         url = base + path
@@ -468,5 +487,6 @@ class Client(Helper):
         assert isinstance(pages_concurrency, int)
 
         async for video in self.iterator(use_alternative_constructor=True, video_link_extractor=extractor_shorts, target_page_urls=page_urls,
-                                 max_video_concurrency=videos_concurrency, max_page_concurrency=pages_concurrency):
+                                 max_video_concurrency=videos_concurrency, max_page_concurrency=pages_concurrency,
+                                         on_video_error=on_video_error, on_page_error=on_page_error):
             yield await video.init()
