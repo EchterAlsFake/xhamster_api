@@ -17,11 +17,11 @@ from base_api.modules.errors import NetworkingError, BotProtectionDetected, Unkn
 try:
     from modules.consts import *
     from modules.errors import *
-    from modules.type_hints import callback_hint
+    from modules.type_hints import *
 except (ModuleNotFoundError, ImportError):
     from .modules.consts import *
     from .modules.errors import *
-    from .modules.type_hints import callback_hint
+    from .modules.type_hints import *
 
 try:
     import lxml
