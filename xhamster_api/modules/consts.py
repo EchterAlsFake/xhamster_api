@@ -1,7 +1,7 @@
 import re
 
-from bs4 import BeautifulSoup
 from typing import List
+from selectolax.lexbor import LexborHTMLParser
 
 try:
     import lxml
@@ -11,7 +11,6 @@ except (ModuleNotFoundError, ImportError):
     parser = "html.parser"
 
 REGEX_M3U8 = re.compile(r'https://[^"]*?_TPL_\.(?:h264|av1)\.mp4\.m3u8')
-REGEX_TITLE = re.compile(r'<meta property="og:title" content="(.*?)"')
 REGEX_AUTHOR = re.compile(r'<div class="item-[^"]*?">.*?<img[^>]+?alt="([^"]+?)"[^>]*?>.*?<span class="body-[^"]*? label-[^"]*? label-[^"]*?">([^<]+?)</span>')
 REGEX_AUTHOR_SHORTS = re.compile(r'"name":"(.*?)"')
 REGEX_THUMBNAIL = re.compile(r'<meta property="og:image" content="(.*?)"/>')
@@ -25,16 +24,12 @@ headers = {
     "Referer": "https://www.xhamster.com/"
 }
 
-def extractor_html(content: str) -> List[str]:
-    soup = BeautifulSoup(content, parser)
-    nodes = soup.find_all("a",class_="video-thumb__image-container role-pop thumb-image-container ist-trigger")
-    return [n.get("href") for n in nodes if n and n.get("href")]
-
 
 def extractor_shorts(content: str) -> List[str]:
-    soup = BeautifulSoup(content, parser)
-    nodes = soup.find_all("a", class_="imageContainer-a870e role-pop thumb-image-container thumb-image-container--moment")
-    return [n.get("href") for n in nodes if n and n.get("href")]
+    soup = LexborHTMLParser(content)
+    nodes = soup.css("a.imageContainer-a870e.role-pop.thumb-image-container.thumb-image-container--moment")
+    stuff = [n.attributes.get("href") for n in nodes if n and n.attributes.get("href")]
+    return stuff
 
 def build_page_url(url: str, is_search: bool, idx: int) -> str:
     if is_search:

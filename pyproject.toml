@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "xhamster_api"
-version = "2.2"
+version = "2.3"
 description = "A Python API for the Porn Site xhamster.com"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.12"
@@ -14,9 +14,9 @@ authors = [
     { name = "Johannes Habel", email = "EchterAlsFake@proton.me" }
 ]
 dependencies = [
-    "bs4",
-    "demjson3>=3.0.6",
-    "eaf_base_api",
+    "selectolax",
+    "chompjs",
+    "eaf-base-api",
     "m3u8",
 ]
 
@@ -28,7 +28,6 @@ classifiers = [
 
 [project.optional-dependencies]
 av = ["av; python_version >= '3.10'"]
-full = ["lxml"] # H2 for HTTP 2.0 support, LXML for faster parsing speed, though optional :)
 
 [project.urls]
 Homepage = "https://github.com/EchterAlsFake/xhamster_api"
@@ -39,3 +38,6 @@ packages = { find = {} }
 [tool.uv.build-backend]
 module-name = "xhamster_api"
 module-root = ""
+
+[tool.uv.sources]
+eaf-base-api = { path = "../eaf_base_api", editable = true }
