@@ -1,21 +1,20 @@
 from __future__ import annotations
 
-import asyncio
 import os
 import urllib
 import logging
 import chompjs
+import asyncio
 
 from dataclasses import dataclass
 from functools import cached_property
-from base_api import DownloadConfigHLS, ScrapeResult
 from urllib.parse import urlencode, quote
 from curl_cffi import AsyncSession, Response
 from selectolax.lexbor import LexborHTMLParser
 from base_api.modules.config import RuntimeConfig
-from base_api import BaseCore, setup_logger, Helper
 from base_api.modules.type_hints import DownloadReport
 from typing import Literal, AsyncGenerator, Any, Dict, List
+from base_api import DownloadConfigHLS, ScrapeResult, BaseCore, setup_logger, Helper
 from base_api.modules.errors import NetworkRequestError, BotProtectionDetected, UnknownError, InvalidProxy, ResourceGone
 
 from xhamster_api.modules.errors import (NetworkError, UnknownNetworkError, NotFound, BotDetection, ProxyError,
@@ -129,7 +128,7 @@ class Something(Helper):
                      on_video_error: on_error_hint = on_error,
                      on_page_error: on_error_hint = None,
                      keep_original_order: bool = False
-                     ) -> AsyncGenerator[Video, None]:
+                     ) -> AsyncGenerator[ScrapeResult, None]:
         page_urls = [build_page_url(url=self.url, is_search=False, idx=page) for page in range(1, pages + 1)]
         videos_concurrency = videos_concurrency or self.core.configuration.videos_concurrency
         pages_concurrency = pages_concurrency or self.core.configuration.pages_concurrency
@@ -141,27 +140,6 @@ class Something(Helper):
                                  keep_original_order=keep_original_order):
             yield scrape_result
 
-    @cached_property
-    def get_information(self) -> Dict[str, str] | None:
-        container = self.lexbor.css_first("div.personalInfo-5360e")
-        if not container:
-            return None # No User Information present...
-
-        li_tags = container.css("li")
-        fortnite = self.lexbor.css("ul.list-b51e4")
-        if len(fortnite) > 1:
-            li_tags.extend(fortnite[1].css("li"))
-
-        dictionary = {}
-
-        for li_tag in li_tags:
-            divs = li_tag.css("div")
-            if len(divs) >= 2:
-                key = divs[0].text(strip=True)
-                value = divs[1].text(strip=True)
-                dictionary[key] = value
-
-        return dictionary
 
     async def get_shorts(self, pages: int = 2, videos_concurrency: int = 2, pages_concurrency: int = 1,
                          on_video_error: on_error_hint = on_error,
@@ -190,6 +168,27 @@ class Pornstar(Something):
     def name(self) -> str:
         return self._find_text("h2.h3-bold-8643e.primary-8643e.landing-info__user-title")
 
+    @cached_property
+    def get_information(self) -> Dict[str, str] | None:
+        container = self.lexbor.css_first("div.personalInfo-5360e")
+        if not container:
+            return None # No User Information present...
+
+        li_tags = container.css("li")
+        fortnite = self.lexbor.css("ul.list-b51e4")
+        if len(fortnite) > 1:
+            li_tags.extend(fortnite[1].css("li"))
+
+        dictionary = {}
+
+        for li_tag in li_tags:
+            divs = li_tag.css("div")
+            if len(divs) >= 2:
+                key = divs[0].text(strip=True)
+                value = divs[1].text(strip=True)
+                dictionary[key] = value
+
+        return dictionary
 
 class Creator(Something):
 
@@ -197,6 +196,27 @@ class Creator(Something):
     def name(self) -> str:
         return self._find_text("h2.h3-bold-8643e.primary-8643e.landing-info__user-title")
 
+    @cached_property
+    def get_information(self) -> Dict[str, str] | None:
+        container = self.lexbor.css_first("div.personalInfo-5360e")
+        if not container:
+            return None # No User Information present...
+
+        li_tags = container.css("li")
+        fortnite = self.lexbor.css("ul.list-b51e4")
+        if len(fortnite) > 1:
+            li_tags.extend(fortnite[1].css("li"))
+
+        dictionary = {}
+
+        for li_tag in li_tags:
+            divs = li_tag.css("div")
+            if len(divs) >= 2:
+                key = divs[0].text(strip=True)
+                value = divs[1].text(strip=True)
+                dictionary[key] = value
+
+        return dictionary
 
 class Short:
     __slots__ = ("metadata", "core")
@@ -242,6 +262,10 @@ class Short:
         return self.metadata.tags
 
     @property
+    def author(self) -> str:
+        return self.metadata.author
+
+    @property
     def author_subscribers(self) -> int:
         return self.metadata.author_subscribers
 
@@ -265,7 +289,7 @@ class Short:
     def m3u8_base_url(self) -> str:
         return self.metadata.m3u8_bas_url
 
-    async def download(self, configuration: DownloadConfigHLS) -> bool | DownloadReport | None:
+    async def download(self, configuration: DownloadConfigHLS) -> bool | DownloadReport:
         """
         :param configuration:
         :return:
@@ -491,7 +515,7 @@ class Video:
     def m3u8_base_url(self) -> str:
         return self.metadata.m3u8_base_url
 
-    async def download(self, configuration: DownloadConfigHLS) -> bool | DownloadReport | None:
+    async def download(self, configuration: DownloadConfigHLS) -> bool | DownloadReport:
         """
         :param configuration:
         :return:
@@ -768,13 +792,3 @@ class Client(Helper):
                                          on_video_error=on_video_error, on_page_error=on_page_error,
                                          keep_original_order=keep_original_order):
             yield scrape_result
-
-async def test():
-    core = BaseCore()
-    core.enable_logging(level=logging.DEBUG)
-    client = Client(core=core)
-    pornstar = await client.get_pornstar("https://xhamster.com/pornstars/stella-cardo")
-    async for short in pornstar.get_shorts(videos_concurrency=30, keep_original_order=False):
-        print(short.video.title)
-
-asyncio.run(test())

@@ -3,13 +3,6 @@ import re
 from typing import List
 from selectolax.lexbor import LexborHTMLParser
 
-try:
-    import lxml
-    parser = "lxml"
-
-except (ModuleNotFoundError, ImportError):
-    parser = "html.parser"
-
 REGEX_M3U8 = re.compile(r'https://[^"]*?_TPL_\.(?:h264|av1)\.mp4\.m3u8')
 REGEX_AUTHOR = re.compile(r'<div class="item-[^"]*?">.*?<img[^>]+?alt="([^"]+?)"[^>]*?>.*?<span class="body-[^"]*? label-[^"]*? label-[^"]*?">([^<]+?)</span>')
 REGEX_AUTHOR_SHORTS = re.compile(r'"name":"(.*?)"')
